@@ -3,10 +3,8 @@ package com.epam.services;
 import lombok.SneakyThrows;
 
 import javax.annotation.PostConstruct;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -18,6 +16,7 @@ public class ObjectFactory {
 
     private final ApplicationContext context;
     private List<ObjectConfigurator> configurators = new ArrayList<>();
+    private List<TypeConfigurator> typeConfigurators = new ArrayList<>();
 
     @SneakyThrows
     public ObjectFactory(ApplicationContext context) {
@@ -25,6 +24,11 @@ public class ObjectFactory {
         Set<Class<? extends ObjectConfigurator>> classes = context.getScanner().getSubTypesOf(ObjectConfigurator.class);
         for (Class<? extends ObjectConfigurator> aClass : classes) {
             configurators.add(aClass.getDeclaredConstructor().newInstance());
+        }
+        
+        Set<Class<? extends TypeConfigurator>> typeConfiguratorClasses = context.getScanner().getSubTypesOf(TypeConfigurator.class);
+        for (Class<? extends TypeConfigurator> aClass : typeConfiguratorClasses) {
+        	typeConfigurators.add(aClass.getDeclaredConstructor().newInstance());
         }
     }
 
@@ -35,17 +39,8 @@ public class ObjectFactory {
         configure(t);
 
         invokeInit(type, t);
-
-        if (type.isAnnotationPresent(Deprecated.class)) {
-            return (T) Proxy.newProxyInstance(ClassLoader.getSystemClassLoader(), type.getInterfaces(), new InvocationHandler() {
-                @Override
-                public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-                    System.out.println("Что же ты урод пользуешься Deprecated классами " + t.getClass());
-                    return method.invoke(t, args);
-                }
-            });
-        }
-
+        
+        t = configureType(type, t);
 
         return t;
     }
@@ -62,6 +57,14 @@ public class ObjectFactory {
     private <T> void configure(T t) {
         configurators.forEach(configurator -> configurator.configure(t, context));
     }
-
-
+    
+    
+    private <T> T configureType(Class<T> type, T t) {
+    	T result = t;
+    	for (TypeConfigurator configurator : typeConfigurators) {
+    		result = configurator.configure(type, result, context);
+		}
+    	
+    	return result;
+    }
 }
